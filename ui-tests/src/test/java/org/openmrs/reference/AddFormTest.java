@@ -27,6 +27,7 @@ public class AddFormTest extends TestBase {
         homePage = new HomePage(page);
         assertPage(homePage);
         headerPage = new HeaderPage(driver);
+        
         manageForm = new ManageFormsPage(driver);
         patientDashboardPage = new ClinicianFacingPatientDashboardPage(page);
     }
