@@ -72,6 +72,8 @@ SELECT
             SELECT dg2.obs_id FROM obs dg2
             WHERE dg2.person_id = p.person_id AND dg2.voided = 0
               AND dg2.concept_id = (SELECT concept_id FROM concept WHERE uuid = '594b4495-36dc-52a6-9810-15a9e2e2dcb9')
+              AND EXISTS (SELECT 1 FROM obs has_cat WHERE has_cat.obs_group_id = dg2.obs_id AND has_cat.voided = 0
+                          AND has_cat.concept_id = (SELECT concept_id FROM concept WHERE uuid = '1a5aa050-661d-5e89-95d7-c1eba476df22'))
               AND NOT EXISTS (
                 SELECT 1 FROM obs x
                 WHERE x.obs_group_id = dg2.obs_id AND x.voided = 0
@@ -118,15 +120,30 @@ SELECT
         WHERE e_last.patient_id = p.person_id AND e_last.voided = 0
     )                                                               AS last_consultation_date,
 
-    -- Latest Secondary Antibiotic Prophylaxis answer
+    -- The latest consultation's answers without a Date Stopped: the latest start not after today, then undated, then
+    -- future, the first saved for one start. ACT Core skips the last two; the No prescription case counts them.
     (
         SELECT cn_sap.name
         FROM obs o_sap
         JOIN concept_name cn_sap ON cn_sap.concept_id = o_sap.value_coded
             AND cn_sap.locale = 'en' AND cn_sap.locale_preferred = 1 AND cn_sap.voided = 0
-        WHERE o_sap.person_id = p.person_id AND o_sap.voided = 0
+        LEFT JOIN obs o_start ON o_start.obs_group_id = o_sap.obs_group_id AND o_start.voided = 0
+            AND o_start.concept_id = (SELECT concept_id FROM concept WHERE uuid = '5bcc7d12-b279-5955-815c-090a1f392071')
+        WHERE o_sap.voided = 0
           AND o_sap.concept_id = (SELECT concept_id FROM concept WHERE uuid = '668e0221-8b41-5669-9ad8-78e193d42494')
-        ORDER BY o_sap.obs_datetime DESC, o_sap.obs_id DESC LIMIT 1
+          AND o_sap.encounter_id = (
+                SELECT o_last.encounter_id
+                FROM obs o_last
+                WHERE o_last.person_id = p.person_id AND o_last.voided = 0 AND o_last.value_coded IS NOT NULL
+                  AND o_last.concept_id = (SELECT concept_id FROM concept WHERE uuid = '668e0221-8b41-5669-9ad8-78e193d42494')
+                ORDER BY o_last.obs_datetime DESC, o_last.obs_id DESC LIMIT 1
+              )
+          AND NOT EXISTS (
+                SELECT 1 FROM obs o_stop
+                WHERE o_stop.obs_group_id = o_sap.obs_group_id AND o_stop.voided = 0
+                  AND o_stop.concept_id = (SELECT concept_id FROM concept WHERE uuid = 'd75edc42-3213-5a06-9228-4e5735b9594b')
+              )
+        ORDER BY COALESCE(o_start.value_datetime > CURDATE(), 0), o_start.value_datetime DESC, o_sap.obs_id LIMIT 1
     )                                                               AS prophylaxis_regimen,
 
     -- Next consultation: the latest Next Consultation Time Amount after its encounter's date, in the
@@ -188,6 +205,7 @@ SELECT
             CASE WHEN DATEDIFF(MAX(adh.next_due), CURDATE()) < 0 THEN 'Not covered'
                  WHEN DATEDIFF(MAX(adh.next_due), CURDATE()) <= 7 THEN 'Deadline approaching'
                  ELSE 'Covered' END
+        WHEN MAX(adh.injection_interval_days) = 0 AND MAX(adh.regimen_concept_id) IS NOT NULL THEN 'Oral'
     END                                                             AS bpg_status,
     -- Typed as ACT Core's chart types it: an injection interval means BPG
     CASE WHEN MAX(adh.injection_interval_days) > 0 THEN 'BPG'
