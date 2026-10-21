@@ -1,7 +1,11 @@
-# ACT 3.0: creating the user accounts on a deployment
+# ACT 3.0: creating the user accounts on a demo deployment
 
-Do this once on every new deployment, after the server has started for the first time. It takes about
-ten minutes. The roles already exist: the distribution loads them at startup.
+> **For demo instances only.** These accounts and their shared passwords are intended for
+> demonstration, training and test environments. Do **not** create them on a production deployment.
+> On production, provision each user individually with a strong, unique password.
+
+Do this once on every new demo deployment, after the server has started for the first time. It takes
+about ten minutes. The roles already exist: the distribution loads them at startup.
 
 ## The accounts
 
@@ -50,5 +54,5 @@ in again.
 
 - A Site or Instance Administrator can also create accounts the same way, once they exist. A Global
   Administrator cannot.
-- These passwords are the same on every deployment. On a production site, have each person change
-  theirs after the first sign-in, from **My Profile** in the legacy pages.
+- These passwords are shared across every demo deployment and are **not** suitable for production.
+  Production sites must use unique, per-user passwords (and ideally SSO) rather than this guide.
