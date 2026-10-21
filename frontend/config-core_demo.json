@@ -670,7 +670,10 @@
     "extensionSlots": {
       "help-menu-slot": {
         "remove": [
-          "contact-us"
+          "contact-us",
+          "docs",
+          "release-notes",
+          "tutorials"
         ]
       }
     }
