@@ -218,16 +218,23 @@ SELECT
     DATEDIFF(MAX(adh.next_due), CURDATE())                          AS days_until_due,
     ROUND(MAX(adh.adherence) * 100)                                 AS adherence,
 
-    -- Last updated: the latest activity on the patient's chart, from any non-voided encounter they have.
+    -- Last updated: the latest of the patient's non-voided encounters and their person or attribute edits.
     -- ACT 2.0 sorted the registry by this to find patients worked on recently or long ago.
     (
-        SELECT DATE(MAX(e_any.encounter_datetime))
-        FROM encounter e_any
-        WHERE e_any.patient_id = p.person_id AND e_any.voided = 0
+        SELECT DATE(GREATEST(
+            pe.date_created,
+            COALESCE(pe.date_changed, pe.date_created),
+            COALESCE((SELECT MAX(e_any.encounter_datetime) FROM encounter e_any
+                      WHERE e_any.patient_id = pe.person_id AND e_any.voided = 0), pe.date_created),
+            COALESCE((SELECT MAX(COALESCE(pa.date_changed, pa.date_created)) FROM person_attribute pa
+                      WHERE pa.person_id = pe.person_id AND pa.voided = 0), pe.date_created)))
+        FROM person pe
+        WHERE pe.person_id = p.person_id
     )                                                               AS last_updated,
 
     -- Earliest open procedure due: the minimum date_added across the patient's open Interventional
     -- Recommendations in their latest RHD Consultation Visit, matching the Procedural Waiting List's logic.
+    -- Keep the open-recommendation and date_added logic in step with procedural_waiting_list.sql.
     -- A patient with no open recommendation has none, and sorts last.
     (
         SELECT MIN(DATE(COALESCE((
