@@ -218,13 +218,13 @@ SELECT
     DATEDIFF(MAX(adh.next_due), CURDATE())                          AS days_until_due,
     ROUND(MAX(adh.adherence) * 100)                                 AS adherence,
 
-    -- Last updated: the latest of the patient's non-voided encounters and their person or attribute edits.
-    -- ACT 2.0 sorted the registry by this to find patients worked on recently or long ago.
+    -- Last updated: the latest time a non-voided encounter, the person or an attribute was recorded or edited.
+    -- Encounters count by entry time, so a backdated entry made today still moves the patient to the top.
     (
         SELECT DATE(GREATEST(
             pe.date_created,
             COALESCE(pe.date_changed, pe.date_created),
-            COALESCE((SELECT MAX(e_any.encounter_datetime) FROM encounter e_any
+            COALESCE((SELECT MAX(COALESCE(e_any.date_changed, e_any.date_created)) FROM encounter e_any
                       WHERE e_any.patient_id = pe.person_id AND e_any.voided = 0), pe.date_created),
             COALESCE((SELECT MAX(COALESCE(pa.date_changed, pa.date_created)) FROM person_attribute pa
                       WHERE pa.person_id = pe.person_id AND pa.voided = 0), pe.date_created)))
