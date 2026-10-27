@@ -540,6 +540,9 @@
     ]
   },
   "@act-registry/esm-act-app": {
+    "helpMenu": {
+      "contactUrl": "mailto:McCall.Miller@cchmc.org"
+    },
     "registry": {
       "showBpgColumns": true
     },
