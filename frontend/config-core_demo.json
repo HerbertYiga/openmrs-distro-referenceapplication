@@ -51,7 +51,16 @@
       "patient-chart": {
         "remove": [
           "patient-chart-order-basket"
-        ]
+        ],
+        "configure": {
+          "visit-note": {
+            "Display conditions": {
+              "privileges": [
+                "Task: act.enterClinicalForms"
+              ]
+            }
+          }
+        }
       },
       "patient-chart-dashboard-slot": {
         "add": [
@@ -108,6 +117,13 @@
                 "Task: act.enterClinicalForms"
               ]
             }
+          },
+          "programs-summary-dashboard": {
+            "Display conditions": {
+              "privileges": [
+                "Task: act.enterClinicalForms"
+              ]
+            }
           }
         }
       },
@@ -118,12 +134,13 @@
           "past-medications-widget"
         ],
         "order": [
+          "patient-flags-list",
           "act-next-steps-card",
           "act-prophylaxis-card",
           "act-consultation-card",
           "act-inr-card",
-          "conditions-overview-widget",
-          "act-contact-card"
+          "act-contact-card",
+          "conditions-overview-widget"
         ],
         "configure": {
           "conditions-overview-widget": {
@@ -164,17 +181,9 @@
       },
       "patient-actions-slot": {
         "remove": [
-          "add-patient-to-patient-list-button"
-        ],
-        "configure": {
-          "mark-patient-deceased-button": {
-            "Display conditions": {
-              "privileges": [
-                "Edit People"
-              ]
-            }
-          }
-        }
+          "add-patient-to-patient-list-button",
+          "mark-patient-deceased-button"
+        ]
       }
     }
   },
@@ -300,8 +309,7 @@
           "consentPerson",
           "consentDate",
           "assignedCardiacClinic",
-          "primaryCareClinic",
-          "textItSettings"
+          "primaryCareClinic"
         ]
       }
     ],
@@ -309,7 +317,7 @@
       {
         "id": "consentStatement",
         "type": "text",
-        "label": "I told the patient the following about the use of their health information: Their personal health information will go into a computer program that helps manage their heart care. The information will be kept on special computers in the United States that store their data. The data may be used for other purposes, such as researching ways to improve treatment for people with heart conditions around the world. No information that directly identifies them, such as their name or account numbers, will be shared with anyone else. Their treatment does not depend on giving this permission and they can change their mind anytime so that new health information will not be used or shared. The patient told me that they understood the risks related to this information, and the patient freely agreed to share their data."
+        "label": "I told the patient the following about the use of their health information: Their personal health information will go into a computer program that helps manage their heart care. The data may be used for other purposes, such as researching ways to improve treatment for people with heart conditions around the world. No information that directly identifies them, such as their name or account numbers, will be shared with anyone else. Their treatment does not depend on giving this permission and they can change their mind anytime so that new health information will not be used or shared. The patient told me that they understood the risks related to this information, and the patient freely agreed to have their data entered into ACT."
       },
       {
         "id": "assignedCardiacClinic",
@@ -376,22 +384,6 @@
         "uuid": "b29617e3-c49e-5893-8dc7-e06b125a0264",
         "label": "Date of Consent (required if consent is Yes)",
         "allowFutureDates": false
-      },
-      {
-        "id": "textItSettings",
-        "type": "person attribute",
-        "uuid": "68b50c5e-250e-5dab-bd34-fb007756a7ed",
-        "label": "Text-It Settings (optional)",
-        "customConceptAnswers": [
-          {
-            "uuid": "1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            "label": "Yes"
-          },
-          {
-            "uuid": "1066AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            "label": "No"
-          }
-        ]
       },
       {
         "id": "primaryPhone",
@@ -560,7 +552,8 @@
       "earlyWarningFlags": [
         "RHD cardiology follow-up due",
         "RHD INR review due",
-        "RHD no data for 5 months"
+        "RHD no data for 5 months",
+        "RHD referred to a clinician"
       ],
       "flagForms": [
         {

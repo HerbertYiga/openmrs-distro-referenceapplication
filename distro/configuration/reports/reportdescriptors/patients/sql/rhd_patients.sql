@@ -218,6 +218,101 @@ SELECT
     DATEDIFF(MAX(adh.next_due), CURDATE())                          AS days_until_due,
     ROUND(MAX(adh.adherence) * 100)                                 AS adherence,
 
+    -- Last updated: the latest time a non-voided encounter, the person or an attribute was recorded or edited.
+    -- Encounters count by entry time, so a backdated entry made today still moves the patient to the top.
+    (
+        SELECT DATE(GREATEST(
+            pe.date_created,
+            COALESCE(pe.date_changed, pe.date_created),
+            COALESCE((SELECT MAX(COALESCE(e_any.date_changed, e_any.date_created)) FROM encounter e_any
+                      WHERE e_any.patient_id = pe.person_id AND e_any.voided = 0), pe.date_created),
+            COALESCE((SELECT MAX(COALESCE(pa.date_changed, pa.date_created)) FROM person_attribute pa
+                      WHERE pa.person_id = pe.person_id AND pa.voided = 0), pe.date_created)))
+        FROM person pe
+        WHERE pe.person_id = p.person_id
+    )                                                               AS last_updated,
+
+    -- Earliest open procedure due: the minimum date_added across the patient's open Interventional
+    -- Recommendations in their latest RHD Consultation Visit, matching the Procedural Waiting List's logic.
+    -- Keep the open-recommendation and date_added logic in step with procedural_waiting_list.sql.
+    -- A patient with no open recommendation has none, and sorts last.
+    (
+        SELECT MIN(DATE(COALESCE((
+            SELECT MIN(e_first.encounter_datetime)
+            FROM obs g_first
+            JOIN encounter e_first ON e_first.encounter_id = g_first.encounter_id AND e_first.voided = 0
+                AND e_first.patient_id = p.person_id
+                AND e_first.form_id = e_rec.form_id AND e_first.encounter_datetime <= e_rec.encounter_datetime
+            JOIN obs proc_first ON proc_first.obs_group_id = g_first.obs_id AND proc_first.voided = 0
+                AND proc_first.person_id = p.person_id
+                AND proc_first.concept_id = g_rec.concept_id AND proc_first.value_coded = proc_rec.value_coded
+            WHERE g_first.person_id = p.person_id AND g_first.voided = 0
+              AND g_first.concept_id = g_rec.concept_id AND g_first.obs_group_id IS NULL
+              AND e_first.encounter_datetime > GREATEST(COALESCE((
+                  SELECT MAX(e_done.encounter_datetime)
+                  FROM obs proc_done
+                  JOIN obs done ON done.obs_group_id = proc_done.obs_group_id AND done.voided = 0
+                      AND done.concept_id = (SELECT concept_id FROM concept WHERE uuid = '1632f8dc-195d-5d67-a52e-6c7a057cb536')
+                      AND done.value_coded IN ((SELECT CAST(property_value AS UNSIGNED) FROM global_property WHERE property = 'concept.true'),
+                                               (SELECT concept_id FROM concept WHERE uuid = '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'))
+                  JOIN encounter e_done ON e_done.encounter_id = proc_done.encounter_id AND e_done.voided = 0
+                      AND e_done.patient_id = p.person_id AND e_done.form_id = e_rec.form_id
+                  WHERE proc_done.person_id = p.person_id AND proc_done.voided = 0
+                    AND proc_done.concept_id = g_rec.concept_id AND proc_done.obs_group_id IS NOT NULL
+                    AND proc_done.value_coded = proc_rec.value_coded
+              ), '1900-01-01'), COALESCE(
+                  (SELECT MAX(DATE(COALESCE(pl_d.value_datetime, pl_e.encounter_datetime)))
+                   FROM obs pl
+                   JOIN encounter pl_e ON pl_e.encounter_id = pl.encounter_id AND pl_e.voided = 0
+                   LEFT JOIN obs pl_d ON pl_d.encounter_id = pl_e.encounter_id AND pl_d.voided = 0
+                       AND pl_d.concept_id = (SELECT concept_id FROM concept WHERE uuid = '6cbb5176-144a-576b-9b3d-c9e9d6bc5f5a')
+                   WHERE pl.person_id = p.person_id AND pl.voided = 0
+                     AND pl.concept_id IN ((SELECT concept_id FROM concept WHERE uuid = '46f4af80-b783-59f4-beb1-81144ccf3084'),
+                                           (SELECT concept_id FROM concept WHERE uuid = 'bb4a77ee-836a-57e7-a262-632fa22288d2'))
+                     AND pl.value_coded = proc_rec.value_coded)
+              + INTERVAL 1 DAY, '1900-01-01'))
+        ), e_rec.encounter_datetime)))
+        FROM encounter e_rec
+        JOIN form f_rec ON f_rec.form_id = e_rec.form_id AND f_rec.uuid = '4b063fc7-996f-3001-8500-8940e201be8f'
+        JOIN obs g_rec ON g_rec.encounter_id = e_rec.encounter_id AND g_rec.voided = 0 AND g_rec.obs_group_id IS NULL
+            AND g_rec.concept_id = (SELECT concept_id FROM concept WHERE uuid = 'ce93d393-1df5-587f-bf11-c373eac2ccf4')
+        LEFT JOIN obs proc_rec ON proc_rec.obs_group_id = g_rec.obs_id AND proc_rec.voided = 0
+            AND proc_rec.concept_id = g_rec.concept_id
+        WHERE e_rec.patient_id = p.person_id AND e_rec.voided = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM encounter later
+              WHERE later.patient_id = e_rec.patient_id AND later.form_id = e_rec.form_id AND later.voided = 0
+                AND (later.encounter_datetime > e_rec.encounter_datetime
+                     OR (later.encounter_datetime = e_rec.encounter_datetime AND later.encounter_id > e_rec.encounter_id))
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM obs done
+              WHERE done.obs_group_id = g_rec.obs_id AND done.voided = 0
+                AND done.concept_id = (SELECT concept_id FROM concept WHERE uuid = '1632f8dc-195d-5d67-a52e-6c7a057cb536')
+                AND done.value_coded IN ((SELECT CAST(property_value AS UNSIGNED) FROM global_property WHERE property = 'concept.true'),
+                                         (SELECT concept_id FROM concept WHERE uuid = '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'))
+          )
+          -- Not done on Procedures and Outcomes on or after this consultation's day (AR-162)
+          AND NOT EXISTS (
+              SELECT 1 FROM obs pd
+              JOIN encounter pd_e ON pd_e.encounter_id = pd.encounter_id AND pd_e.voided = 0
+              LEFT JOIN obs pd_d ON pd_d.encounter_id = pd_e.encounter_id AND pd_d.voided = 0
+                  AND pd_d.concept_id = (SELECT concept_id FROM concept WHERE uuid = '6cbb5176-144a-576b-9b3d-c9e9d6bc5f5a')
+              WHERE pd.person_id = p.person_id AND pd.voided = 0
+                AND pd.concept_id IN ((SELECT concept_id FROM concept WHERE uuid = '46f4af80-b783-59f4-beb1-81144ccf3084'),
+                                          (SELECT concept_id FROM concept WHERE uuid = 'bb4a77ee-836a-57e7-a262-632fa22288d2'))
+                AND pd.value_coded = proc_rec.value_coded
+                AND DATE(COALESCE(pd_d.value_datetime, pd_e.encounter_datetime)) >= DATE(e_rec.encounter_datetime)
+          )
+          -- A Procedure Type of None records that no intervention is recommended
+          AND NOT EXISTS (
+              SELECT 1 FROM obs typ
+              WHERE typ.obs_group_id = g_rec.obs_id AND typ.voided = 0
+                AND typ.concept_id = (SELECT concept_id FROM concept WHERE uuid = '3a576b80-744a-59ee-9515-d9fdca06f3d7')
+                AND typ.value_coded = (SELECT concept_id FROM concept WHERE uuid = '1107AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')
+          )
+    )                                                               AS earliest_procedure_due,
+
     -- Clinics, from the Assigned Cardiac Clinic and Primary Care Clinic location attributes
     MAX(cardiac_loc.name)                                           AS cardiac_clinic,
     MAX(primary_loc.name)                                           AS primary_care_clinic,
